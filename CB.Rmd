@@ -1,0 +1,419 @@
+---
+title: "Challenge B"
+author: "Valérie Furio and Anna Tenias"
+date: "08/12/2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+We couldn't write down in the code to install the different packages needed so here are a list of what they are :
+ - tidyverse
+ 
+ -np
+ 
+ -caret
+ 
+ -readr
+ 
+ -ggplot2
+
+
+# Task 1B - Predicting Houses Prices in Ames, Iowa
+
+### Question 1
+We chose to study the Non-Parametric Kernel estimation.
+This method attempts to estimate the density directly from the data and it is non parametric because 
+we do not assume a particular form for the underlying distribution.
+It is similar to histogram except boxes are subsitued by a Gaussian density.
+We choose a target point and the more the obersation is close to the target point the more the curve
+will give an important value. The assaigned weight will die off toward 0 in a continuous fashion way as we getfurther away from the target point.
+The estiamation is formed by the mean of the dfiferent bell curves.
+
+### Question 2
+ First we are going to import the training data from the csv file
+```{r, message=FALSE}
+library(tidyverse)
+datatrain <-  read.csv(file="/Users/annatenias/Desktop/train.csv", header=TRUE, sep=",")
+attach(datatrain)
+```
+Then we are going to remove the column Id because it is not usefull
+```{r}
+datatrain$Id <- NULL
+head(datatrain)
+```
+
+ First we are going to look for the variables with missing data
+```{r}
+datatrain %>% summarise_all(.funs = funs(sum(is.na(.)))) %>% gather(key = "feature", value = "missing.observations") %>% filter(missing.observations > 0)
+```
+ Now we are going to remove the variables with more than 100 missing values 
+```{r}
+remove.vars <- datatrain %>% summarise_all(.funs = funs(sum(is.na(.)))) %>% gather(key = "feature",
+                                                                               value = "missing.observations") %>% filter(missing.observations > 100) %>% select(feature) %>% unlist
+
+datatrain <- datatrain %>% select(- one_of(remove.vars))
+```
+ For the rest of the observations, we remove the ones with missing values
+```{r}
+datatrain %>% summarise_all(.funs = funs(sum(is.na(.)))) %>% gather(key = "feature", value = "missing.observations") %>% filter(missing.observations > 0)
+
+datatrain <- datatrain %>% filter(is.na(GarageType) == FALSE, is.na(MasVnrType) == FALSE, is.na(BsmtFinType2) == FALSE, is.na(BsmtExposure) == FALSE, is.na(Electrical) == FALSE)
+```
+ remove rows with NA in some of these variables, check if you take all missing values like this
+
+ make sure it's all clean : Yes
+```{r}
+datatrain %>% summarise_all(.funs = funs(sum(is.na(.)))) %>% gather(key = "feature", value = "missing.observations") %>% filter(missing.observations > 0)
+```
+Now we are going to convert al character variables into factor
+```{r}
+cat_var <- datatrain %>% summarise_all(.funs = funs(is.character(.))) %>% gather(key = "feature", value = "is.chr") %>% filter(is.chr == TRUE) %>% select(feature) %>% unlist
+
+datatrain %>% mutate_at(.cols = cat_var, .funs = as.factor)
+
+
+
+ggplot(data = datatrain) + geom_histogram(mapping = aes( x = SalePrice))
+
+library(np)
+
+```
+
+Now we are going to compute a kernel regression estimate using the
+npreg function, it will also computa  bandwith specification using the method of 
+ Racine and Li 
+ 
+```{r}
+ModelSP <- npreg(SalePrice ~ MSZoning + LotArea + Neighborhood  + YearBuilt + OverallQual, data = datatrain)
+summary(ModelSP)
+```
+
+
+### Question 3
+
+First we are going to import the test data
+
+```{r}
+datatest <- read.csv(file="/Users/annatenias/Desktop/test.csv", header=TRUE, sep=",")
+
+predictionstest <- predict(ModelSP, newdata=datatest)
+prediction <- data.frame(predictionstest)
+
+mean(predictionstest)
+```
+lets see what the predictions are with our lm model witch is the one from the correction
+```{r}
+
+lm_model_2 <- lm(SalePrice ~ MSZoning + LotArea + Neighborhood  + YearBuilt + OverallQual, data = datatrain)
+
+predictionlm <- predict(lm_model_2, newdata = datatest)
+predictionLM <- data.frame(predictionlm)
+
+
+```
+We seems to not fin any correlation between the predictions from te non parametric estimation and the first model. 
+
+# Task 2B - Overfitting in Machine Learning
+
+I the first time we are taking the correction's code to recreate the model.
+```{r}
+rm(list = ls()) #clean environment, remove all variables/data created before
+```
+Simulating an overfit
+```{r}
+library(tidyverse)
+library(np)
+library(caret)
+# True model : y = x^3 + epsilon
+set.seed(1) # very important for replication
+Nsim <- 150 # Nsim = number of simulations
+b <- c(0,1) #
+x0 <- rep(1, Nsim) 
+x1 <- rnorm(n = Nsim) # x1 is x from the question, I draw here a vector of size Nsim of x from a normal N(0,1)
+
+X <- cbind(x0, x1^3) # this is X such that y = Xb + epsilon, so X = 0 + x^3 = x0 + x1^3 
+# x0 is a vector of 0, x1 is a random vector of size Nsim drawn from normal N(0,1)
+y.true <- X %*% b
+
+eps <- rnorm(n = Nsim) # draw a vector of size Nsim from normal N(0,1), this is epsilon
+y <- X %*% b + eps # the simulated y is then computed following the true model
+
+df <- tbl_df(y[,1]) %>% rename(y = value) %>% bind_cols(tbl_df(x1)) %>% rename(x = value) %>% bind_cols(tbl_df(y.true[,1])) %>% rename(y.true = value) # the previous y and x are matrix and vector, I transform them into a dataframe to use the tidyverse
+```
+
+```{r}
+ggplot(df) + geom_point(mapping = aes(x = x, y = y))
+
+
+ggplot(df) + geom_point(mapping = aes(x = x, y = y)) + 
+  geom_line(mapping = aes(x = x, y = y.true)) # I store the true model f(x) = x^3 (or the best prediction line)  in the column y.true of the data.frame df, and I draw it by adding geom_line to the scatter plot
+
+```
+
+
+Split sample into training and testing, 80/20
+```{r}
+training.index <- createDataPartition(y = y, times = 1, p = 0.8) #index of the rows I want to keep
+df <- df %>% mutate(which.data = ifelse(1:n() %in% training.index$Resample1, "training", "test")) # I create a new column in df (thus the function mutate) that is categorical and is equal to training if the index of the row (i compute through 1:n()) is in the vector training.index; remember training.index contains the number of the rows that are randomly selected into the training set.
+
+training <- df %>% filter(which.data == "training") #here i subset the table into a training sub-table and a test sub-table
+test <- df %>% filter(which.data == "test")
+```
+
+
+Train linear model y ~ x on training
+```{r}
+lm.fit <- lm(y ~ x, data = training) #regress y on x only on training data
+summary(lm.fit)
+```
+
+```{r}
+training <- training %>% mutate(y.lm = predict(object = lm.fit))
+# I add a column to training that has the linear model predictions, then I plot them
+ggplot(training) + geom_point(mapping = aes(x = x, y = y)) + 
+  geom_line(mapping = aes(x = x, y = y.true)) + 
+  geom_line(mapping = aes(x = x, y = y.lm), color = "orange")
+# same plot as before with scatterplot and true line, now add orange line of predictions from linear model.
+```
+
+```{r}
+ggplot(df) + geom_point(mapping = aes(x = x, y = y, color = which.data))
+
+ggplot(training) + geom_point(mapping = aes(x = x, y = y)) + 
+  geom_line(mapping = aes(x = x, y = y.true)) + 
+  geom_line(mapping = aes(x = x, y = y.lm), color = "orange")
+```
+Now this is our code :
+
+### Question 1. Estimate a low-flexibility local linear model on the training data with function npreg
+First with a bandwidth of 0.5:
+```{r}
+ll.fit.lowflex <- npreg(y ~ x,
+                        method="ll",
+                        bws=0.5, 
+                        data=training)
+```
+### Question 2. Estimate a high-flexibility local linear model on the training data with function npreg
+Now with a bandwidth of 0.01:
+```{r}
+ll.fit.highflex <- npreg(y ~ x,
+                        method="ll",
+                        bws=0.01, 
+                        data=training)
+```
+### Question 3. Plot the scatterplot of x-y and predictions (low and high)
+
+ First we put the predictions of the low flexibility model and the high flexibility model in the same table using function mutate:
+```{r}
+trainingLowHigh <- training %>% mutate(y.low = predict(object = ll.fit.lowflex)) %>% mutate(y.high = predict(object = ll.fit.highflex))
+
+# Finally we construct the plot
+ggplot(trainingLowHigh) + geom_point(mapping = aes(x = x, y = y)) + # the scatter points
+  geom_line(mapping = aes(x = x, y = y.true)) + # the "true" curve
+  geom_line(mapping = aes(x = x, y = y.low), color = "red") +# low-flexibility predictions
+  geom_line(mapping = aes(x = x, y = y.high), color = "blue") # low-flexibility predictions
+```
+### Question 4. 
+
+Comments:
+The bias is how far off on the average the model is from the truth,  while the variance tells us how much of the estimate varies around its average.
+We know that, as flexibility increases, typically the bias decreases but the variance increases
+Between the two models, the blue line, which is the high-flexibility model, 
+seems to be the most variable and the least biased.
+This makes sense as we estimated the model on this data.  
+  
+### Question 5. Use the two models to produce predictions on the test data
+```{r}
+lowflex.test <- predict(ll.fit.lowflex,newdata=test) # We use the low-flexibility model to predict the test data
+highflex.test <- predict(ll.fit.highflex,newdata=test) # We use the high-flexibility model to predict the test data
+BW0.01_0.5.Test <- test %>% mutate(lowflex.test) %>% mutate(highflex.test) # We put them in the same table to be able to plot them
+
+# Finally, we plot it:
+ggplot(BW0.01_0.5.Test) + geom_point(mapping = aes(x = x, y = y)) + # the scatter points
+  geom_line(mapping = aes(x = x, y = y.true)) + # the "true" curve
+  geom_line(mapping = aes(x = x, y = lowflex.test), color = "red") + # low-flexibility predictions on the test data
+  geom_line(mapping = aes(x = x, y = highflex.test), color = "blue") # low-flexibility predictions on the test data
+```
+Comments
+While the high flexibility model had less bias on the training data, the results are different here.
+Indeed, when predicting a set of values different from the ones the model was built upon,
+the model does not perform well and does not seem to follow the points at all.
+It seems that we are adding more noise than needed, and that the model is too flexible.
+
+Let's look at the mean square error, which gives us the overall error rate.
+MSE = (1/n)(ymodel - y)^2
+
+### Question 6. Create a vector for the bandwidth: 
+```{r}
+bandwidth <- seq(0.01,0.5,0.001) # This creates a vector from 0.01 to 0.5 with a step of 0.001
+```
+### Question 7. Estimate a local linear model y ~ x on the training data with each bandwidth:
+
+First, we create a function to be able to use lapply after:
+```{r}
+Npregfunction <- function(i){ 
+                        npreg(y~x,method="ll",bws=i,data=training)}
+
+# We use the function lapply to create a model for each bandwidth:
+Npreg.bw.vector <- lapply(bandwidth,Npregfunction) 
+```
+### Question 8. Compute for each bandwidth the MSE on the training data:
+We compute the MSE function directly. We know n=122 for the training data:
+
+We create a function to be able to use sapply after:
+```{r}
+mse.function <- function(i){((1/122)*sum(((fitted.values(i)-training$y)^2)))}
+
+# We use sapply to create a vector with all the MSE values from the training data:
+mse.bw.vector <- sapply(Npreg.bw.vector,mse.function)
+```
+### Question 9. Compute for each bandwidth the MSE on the test data:
+Here we directly find the predictions and then calculate MSE
+
+We create a function for the predictions, to be used with lapply after:
+We can just use the function the function we created for the training data, Npregfunction
+```{r}
+test.prediction.function <- function(i){predict(Npregfunction(i),newdata=test)}
+
+# We use lapply to create a list of the predictions for all of the bandwidths:
+Npreg.bw.vector.test <- lapply(bandwidth,test.prediction.function)
+
+## Calculate MSE on the test data. We know that n=28 here.
+
+# We create a function to be able to use sapply after:
+mse.function.test <- function(i){((1/28)*sum(((test.prediction.function(i)-test$y)^2)))}
+
+# We use sapply to create a vector with all the MSE values from the test data:
+MSE.test <- sapply(bandwidth,mse.function.test)
+```
+### Question 10. We draw this on the same plot
+
+We create a table with the bandwidth, the MSE for the training data, and the MSE for the test data:
+```{r}
+MSE.bandwidth.table <- data.frame(bandwidth,mse.bw.vector,MSE.test)
+
+# And we plot it!
+ggplot(MSE.bandwidth.table) + 
+  geom_line(mapping = aes(x = bandwidth, y = mse.bw.vector,colour = "training")) + # MSE on the training data
+  geom_line(mapping = aes(x = bandwidth, y = MSE.test,colour = "test")) + # MSE on the test data
+  scale_color_manual(values = c(training = "blue", test = "orange")) + # Colour legend
+  labs (title="MSE on training and test data, by bandwidth",y="MSE") # Title and legend 
+```
+Comments
+With this plot, we can see that when the bandwidth increases, 
+The MSE, so the overall error rate, increases with the bandwidth when looking at the training data. 
+As the bias decreases with the bandwidth, the variance is therefore clearly increasing (and more importantly) 
+as we know that MSE = Variance + Bias. 
+However, again the results differ when looking at the test data. 
+The MSE decreases and then increases.
+We can see that when judging the model, the interpretation depends too importantly on the data it was trained on, but does move in the same direction (increase) when increasing the flexiblity.
+
+# Task 3B - Privacy Regulation Compliance in France
+
+```{r}
+rm(list = ls()) # Clean data
+```
+### STEP 1 : Import the CNIL dataset from the Open Data Portal
+
+We are importing the data using the .csv file
+```{r}
+CNILdata <- read.csv(file="/Users/annatenias/Desktop/CNIL_Organismes.csv", header=TRUE, sep=";")
+summary(CNILdata)
+attach(CNILdata)
+newCNILdata <- CNILdata # We work on this
+```
+### STEP 2 : Show a table with the number of organizations that has nominated a CNIL per department
+
+We first create a new column with the first two characters of the column 'Code Postal'
+This will give us, with a small margin of error, the department of the CNIL
+
+```{r}
+library(tidyverse)
+CNIL1 <- newCNILdata %>% mutate(Department = substr(newCNILdata$Code_Postal, 0, 2))
+head(CNIL1,5)
+```
+We clean some of the mistakes that were made when finding the department:
+```{r}
+CNIL1$Department[CNIL1$Department == ""] <- "Other" #Unknown 
+CNIL1$Department[CNIL1$Department == "."] <- "Other" #Unknown
+```
+Some more manual cleaning... 
+(We create a new dataframe in case of a mistake)
+```{r}
+CNIL2 <- CNIL1 
+CNIL2$Department[CNIL1$Department == "PA"] <- 75
+CNIL2$Department[CNIL1$Department == "W1"] <- "Other" #This is in London
+CNIL2$Department[CNIL1$Department == "WC"] <- "Other" #This is in London
+CNIL2$Department[CNIL1$Department == "EC"] <- "Other" #This is in London
+CNIL2$Department[CNIL1$Department == "LU"] <- 13
+CNIL2$Department[CNIL1$Department == "LI"] <- 59
+CNIL2$Department[CNIL1$Department == "CS"] <- 75      #La Defense is in Paris
+CNIL2$Department[CNIL1$Department == "CE"] <- "Other" #Unknown 
+CNIL2$Department[CNIL1$Department == "BP"] <- "Other" #Unknown
+CNIL2$Department[CNIL1$Department == "F3"] <- 33
+```
+Now we rearrange data by counting cells in the column Department
+We count the number of Departments by the Column "Department", so how many times each Department shows up.
+The problem with this is that there could be a duplicate in the data, but it is still safer than counting any other way.
+```{r}
+CNIL3 <- setNames(aggregate(cbind(count = Department) ~ Department, 
+                            data = CNIL2, 
+                            FUN = function(x){NROW(x)}), 
+                  c("Department in France", "Number of organizations that have nominated a CNIL"))
+
+head(CNIL3,5) # A preview ;)
+```
+### STEP 3 : We merge the information from the SIREN dataset into the CNIL data
+
+We import the SIREN dataset to merge with the CNIL data.
+```{r}
+require(readr)
+```
+Prepare the data to make it easier to merge:
+Rename the column from CNIL data to match the SIREN data - Siren to SIREN
+```{r}
+CNILtomerge <- CNIL2 # We work on this dataset 
+names(CNILtomerge)[names(CNILtomerge) == "Siren"] <- "SIREN"
+```
+Change all the CNIL data in SIREN column to character (as is the case in SIREN data)
+```{r}
+CNILtomerge$SIREN <- as.character(as.integer(CNILtomerge$SIREN)) 
+class(CNILtomerge$SIREN)
+```
+Create function to merge the two datasets
+```{r}
+letsmerge <- function(x, pos) inner_join(CNILtomerge, x, by = "SIREN") 
+```
+
+We put the following in our comments because it makes our RMarkdown crash, but we manage to merde the data and take only the most recent data from the SIREN duplicates.We export the result in a csv file which is available in our github repo.
+Import SIREN data by chunk and input function to merge
+
+sirencnil <- read_csv2_chunked(file = "/Users/valerienellyfurio/Downloads/sirc-17804_9075_14209_201710_L_M_20171101_030132835.csv", 
+                                  chunk_size = 100000,
+                                  callback = DataFrameCallback$new(letsmerge))
+
+We work on this data to only take the most recent date of duplicates in SIREN column
+SIRENCNIL.dates <- sirencnil %>% mutate(latest=as.Date(DATEMAJ)) # We streamline the date format with a new column
+
+SIRENCNIL.dates$SIREN <- as.character(as.integer(SIRENCNIL.dates$SIREN)) # We make all SIREN values characters
+SIRENCNIL.dates$SIREN <- as.character(as.numeric(SIRENCNIL.dates$SIREN))
+
+We slice the data and take the latest date for each SIREN duplicate
+SIRENCNIL.final <- SIRENCNIL.dates %>% group_by(SIREN) %>% slice(which.max(as.Date(latest)))
+
+We export the data so our computers don't crash again
+data.for.histogram <- write.csv(SIRENCNIL.final, "/Users/valerienellyfurio/Downloads/SirenCnilChartData.csv")
+
+### STEP 4 : Histogram
+For size of company, we take the column 'EFENCENT', which is the number of employees in the company
+
+SIRENCNIL.plot <- SIRENCNIL.final # We work on this data
+
+We clean the EFENCENT data to make it plotable
+SIRENCNIL.plot$EFENCENT <- as.numeric(as.character(SIRENCNIL.plot$EFENCENT))
+SIRENCNIL.plot <- SIRENCNIL.plot[!is.na(as.numeric(as.character(SIRENCNIL.plot$EFENCENT))),]
+
+qplot(SIRENCNIL.plot$EFENCENT,geom="histogram") # We plot - our computers crash here
