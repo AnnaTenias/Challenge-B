@@ -10,15 +10,16 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 We couldn't write down in the code to install the different packages needed so here are a list of what they are :
+
  - tidyverse
  
- -np
+ - np
  
- -caret
+ - caret
  
- -readr
+ - readr
  
- -ggplot2
+ - ggplot2
 
 
 # Task 1B - Predicting Houses Prices in Ames, Iowa
@@ -86,26 +87,27 @@ Now we are going to compute a kernel regression estimate using the
 npreg function, it will also computa  bandwith specification using the method of 
  Racine and Li 
  
-```{r}
+For the next par of the code we had to take it off because Rarkdown wouldn't knit (it took too long)
+
 ModelSP <- npreg(SalePrice ~ MSZoning + LotArea + Neighborhood  + YearBuilt + OverallQual, data = datatrain)
 summary(ModelSP)
-```
 
 
 ### Question 3
 
+Since we couldn't knit the file with the previous question be couldn't knit it with the following code but you can run it from the rmd file in our github repo (https://github.com/AnnaTenias/Challenge-B)
 First we are going to import the test data
 
-```{r}
+
 datatest <- read.csv(file="/Users/annatenias/Desktop/test.csv", header=TRUE, sep=",")
 
 predictionstest <- predict(ModelSP, newdata=datatest)
 prediction <- data.frame(predictionstest)
 
 mean(predictionstest)
-```
+
 lets see what the predictions are with our lm model witch is the one from the correction
-```{r}
+
 
 lm_model_2 <- lm(SalePrice ~ MSZoning + LotArea + Neighborhood  + YearBuilt + OverallQual, data = datatrain)
 
@@ -113,7 +115,7 @@ predictionlm <- predict(lm_model_2, newdata = datatest)
 predictionLM <- data.frame(predictionlm)
 
 
-```
+
 We seems to not fin any correlation between the predictions from te non parametric estimation and the first model. 
 
 # Task 2B - Overfitting in Machine Learning
